@@ -7,23 +7,11 @@
     <packaging>jar</packaging>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <!--
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.target>11</maven.compiler.target>
-        -->
-
-        <!--
-        <maven.compiler.release>21</maven.compiler.release>
-        -->
-
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
         <maven-jar-plugin.version>3.4.2</maven-jar-plugin.version>
 
         <version.google-guava>33.0.0-jre</version.google-guava>
     <!--
-    -->
-    <!--
-        <auto-service.version>1.1.1</auto-service.version>
     -->
     </properties>
 
@@ -56,17 +44,6 @@
                         <artifactId>compiler-maven-plugin</artifactId>
                         <version>21.0.0</version>
                     </dependency>
-    <!--
-    -->
-    <!--
-        <dependency>
-            <groupId>com.google.auto.service</groupId>
-            <artifactId>auto-service-annotations</artifactId>
-            <version>${auto-service.version}</version>
-        </dependency>
-    -->
-    <!--
-    -->
                 </dependencies>
                 <configuration>
                     <compilerId>frgaal</compilerId>
@@ -76,15 +53,6 @@
                         <arg>-Xlint:deprecation</arg>
                         <!-- <arg>- -enable-preview</arg> -->
                     </compilerArgs>
-    <!--
-                    <annotationProcessorPaths>
-                        <path>
-                            <groupId>com.google.auto.service</groupId>
-                            <artifactId>auto-service</artifactId>
-                            <version>${auto-service.version}</version>
-                        </path>
-                    </annotationProcessorPaths>
-    -->
                 </configuration>
             </plugin>
             <plugin>
@@ -102,63 +70,11 @@
         </plugins>
     </build>
 
-
-<!--
-    <build>
-        <plugins>
-
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>${maven-compiler-plugin.version}</version>
-
-                <configuration>
-                    <source>17</source>
-                    <target>17</target>
-                </configuration>
-
-            </plugin>
-
-        </plugins>
-    </build>
--->
     <dependencies>
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
             <version>${version.google-guava}</version>
-        </dependency>
-        <!--
-        <dependency>
-            <groupId>com.google.auto.service</groupId>
-            <artifactId>auto-service-annotations</artifactId>
-            <version>${auto-service.version}</version>
-        </dependency>
-    -->
-        <!--
-        <dependency>
-            <groupId>com.google.auto.service</groupId>
-            <artifactId>auto-service</artifactId>
-            <version>1.1.1</version>
-        </dependency>
-    -->
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-api</artifactId>
-            <version>5.10.3</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-params</artifactId>
-            <version>5.10.3</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-engine</artifactId>
-            <version>5.10.3</version>
-            <scope>test</scope>
         </dependency>
     </dependencies>
 

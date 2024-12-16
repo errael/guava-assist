@@ -12,8 +12,6 @@
  * implied. See the License for the specific language governing
  * rights and limitations under the License.
  *
- * The Original Code is jvi - vi editor clone.
- *
  * Contributor(s): Ernie Rael <errael@raelity.com>
  */
 
@@ -29,7 +27,6 @@ import java.util.Map.Entry;
 import java.util.Set;
 
 import javax.annotation.processing.AbstractProcessor;
-import javax.annotation.processing.Processor;
 import javax.annotation.processing.RoundEnvironment;
 import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedSourceVersion;
@@ -46,18 +43,22 @@ import javax.tools.JavaFileObject;
 //import com.google.auto.service.AutoService;
 
 /**
+ * Process annotations for creating a weak EventBus subscriber.
  */
-// TODO: don't have WeakEventBus, it can be inferred.
-// @SupportedAnnotationTypes({"com.raelity.lib.eventbus.WeakSubscribe",
-//     "com.raelity.lib.eventbus.WeakAllowConcurrentEvents"
-//     //     ,
-//     // "com.raelity.lib.eventbus.WeakEventBus"
-// })
-//@AutoService(Processor.class)
-@SupportedAnnotationTypes("com.raelity.lib.eventbus.WeakSubscribe")
+//@SupportedAnnotationTypes("com.raelity.lib.eventbus.WeakSubscribe")
+@SupportedAnnotationTypes({"com.raelity.lib.eventbus.WeakSubscribe",
+    "com.raelity.lib.eventbus.WeakAllowConcurrentEvents"
+})
 @SupportedSourceVersion(SourceVersion.RELEASE_11)
 public class WeakEventBusProcessor extends AbstractProcessor // implements Processor
 {
+// For debug output
+@SuppressWarnings("UseOfSystemOutOrSystemErr")
+private static void P(String fmt, Object... args) {
+    //return args.length == 0 ? fmt : String.format(fmt, args);
+    String s = args.length == 0 ? fmt : String.format(fmt, args);
+    System.out.printf(s);
+}
 // List of methods in order
 private record ClassStuff(List<Element> methods){}
 // Key is classElement.
@@ -68,7 +69,7 @@ public boolean process(Set<? extends TypeElement> annotations,
                        RoundEnvironment roundEnv)
 {
     boolean has_error = false;
-    System.out.println("PROCESSOR-1: " + annotations);
+    P("PROCESSOR-1: " + annotations);
     if (annotations.isEmpty())
         return false;
 
@@ -85,7 +86,7 @@ public boolean process(Set<? extends TypeElement> annotations,
 // List<Element> setters = annotatedMethods.get(true);
 // List<Element> otherMethods = annotatedMethods.get(false);
 
-        System.err.println("PROCESSOR element: " + annotatedElements);
+        P("PROCESSOR element: " + annotatedElements);
         for(Element element : annotatedElements) {
             // Get the class that has this method.
             //DeclaredType classType = (DeclaredType)element.getEnclosingElement().asType();
@@ -103,20 +104,22 @@ public boolean process(Set<? extends TypeElement> annotations,
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                         String.format("%s::%s Subscriber takes exactly one parameter",
                                       classElement.toString(), element.getSimpleName()));
-            } else if (pt.get(0).getKind() != TypeKind.DECLARED) {
-                // has_error = true;
-                // processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                //         String.format("%s::%s parameter is not an object",
-                //                       classElement.toString(), element.getSimpleName()));
             }
-            System.err.printf("el %s, elKind: %s, type %s\n",
-                              element, element.getKind(), methodType);
-            System.err.printf("name %s::%s, argType: %s, kind %s\n",
-                              classElement.toString(), element.getSimpleName(),
-                              pt.get(0).toString(), pt.get(0).getKind());
+            // else if (pt.get(0).getKind() != TypeKind.DECLARED) {
+            //     // has_error = true;
+            //     // processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+            //     //         String.format("%s::%s parameter is not an object",
+            //     //                       classElement.toString(), element.getSimpleName()));
+            // }
+            P("el %s, elKind: %s, type %s\n",
+              element, element.getKind(), methodType);
+            P("name %s::%s, argType: %s, kind %s\n",
+              classElement.toString(), element.getSimpleName(),
+              pt.get(0).toString(), pt.get(0).getKind());
             clazzes.get(classElement).methods().add(element);
             //stuff.methods().add(element);
         }
+        // Now build the weak event bus files.
         for(Entry<Element, ClassStuff> entry : clazzes.entrySet()) {
             try {
                 // String pkg = processingEnv.getElementUtils()
@@ -129,10 +132,6 @@ public boolean process(Set<? extends TypeElement> annotations,
                         "Error generating builder: " + ex);
             }
         }
-
-        // Now build the weak event bus classes.
-        
-        //System.err.println("PROCESSOR: "+annotatedElements);
     }
     return true;
 }
@@ -172,13 +171,12 @@ public static String nameWeakBR(String strongEBName, String pkg)
     if (!strongEBName.startsWith(pkg))
         throw new IllegalArgumentException("EBName must start with package name");
     String n = "WeakEB_" + strongEBName.substring(pkg.length()+1).replaceAll("[\\.\\$]", "_");
-    System.err.printf("WeakEventBus::register: %s::%s\n", pkg, n);
+    P("WeakEventBus::register: %s::%s\n", pkg, n);
     return n;
 }
 
 private static final String GUAVA_EB = "com.google.common.eventbus";
 
-//private void createClass(DeclaredType classType) {
 private Element checkClassFor(Element element) {
     // TODO: check for guava eventbus annotations; if any then error.
     Element classElement = element.getEnclosingElement();
@@ -189,10 +187,10 @@ private Element checkClassFor(Element element) {
     String pkg = processingEnv.getElementUtils().getPackageOf(element)
             .getQualifiedName().toString();
     clazzes.put(classElement, new ClassStuff(new ArrayList<>()));
-    System.err.printf("el %s, enclKind %s, name %s::%s classType:\n    %s\n    %s\n",
-                      element, classType.getKind(),
-                      pkg, nameWeakBR(classType.toString(), pkg),
-                      classType.getClass().getName(), classType);
+    P("el %s, enclKind %s, name %s::%s classType:\n    %s\n    %s\n",
+      element, classType.getKind(),
+      pkg, nameWeakBR(classType.toString(), pkg),
+      classType.getClass().getName(), classType);
 
     return classElement;
 
@@ -208,7 +206,7 @@ private Element checkClassFor(Element element) {
     // return classType;
 }
 
-private void createMethod(TypeElement classElement) {
+private void checkMethodFor(TypeElement classElement) {
 }
 
 //public static void main(String[] args) {
