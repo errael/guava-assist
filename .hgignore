@@ -1,0 +1,11 @@
+
+syntax: glob
+
+*~
+*.sw[pmno]
+*.orig
+*.orig.*
+*.rej
+
+subinclude:event-bus/.hgignore
+subinclude:event-bus-test/.hgignore
