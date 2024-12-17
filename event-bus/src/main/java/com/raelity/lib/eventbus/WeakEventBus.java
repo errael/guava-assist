@@ -20,7 +20,9 @@ package com.raelity.lib.eventbus;
 import java.lang.ref.Cleaner;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
+import java.util.Map;
 
+import com.google.common.collect.MapMaker;
 import com.google.common.eventbus.EventBus;
 
 /**
@@ -56,7 +58,7 @@ public static void register(Object strongBR, EventBus eventBus)
         // weak reference to the strong EB receiver.
         Class<?> weakClazz = Class.forName(clazz.getPackageName() + "." + nameWeakBR);
         Constructor<?> ctor = weakClazz.getConstructor(clazz);
-        // Create the weak EB receiver which weak references the strong EB receiver.
+        // Create the weak EB receiver that weak references the strong EB receiver.
         Object weakBR = ctor.newInstance(strongBR);
         // Register the weak event bus to the event bus.
         eventBus.register(weakBR);
@@ -64,6 +66,7 @@ public static void register(Object strongBR, EventBus eventBus)
         WeakEventBus.cleaner.register(strongBR, () -> {
             eventBus.unregister(weakBR);
         });
+        registered.put(strongBR, weakBR);
     } catch(ClassNotFoundException | NoSuchMethodException | SecurityException |
             InstantiationException | IllegalAccessException |
             IllegalArgumentException | InvocationTargetException ex) {
@@ -73,8 +76,16 @@ public static void register(Object strongBR, EventBus eventBus)
 }
 
 // With MapMaker, weak keys and values.
+private static Map<Object, Object> registered = new MapMaker()
+        .concurrencyLevel(1)
+        .weakKeys()
+        .weakValues()
+        .makeMap();
+
 public static void unregister(Object strongBR, EventBus eventBus)
 {
-    //eventBus.unregister(weakBR);
+    Object weakBR = registered.remove(strongBR);
+    if (weakBR != null)
+        eventBus.unregister(weakBR);
 }
 }
