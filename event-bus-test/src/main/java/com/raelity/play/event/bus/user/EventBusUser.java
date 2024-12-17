@@ -20,6 +20,7 @@ package com.raelity.play.event.bus.user;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.google.common.eventbus.AllowConcurrentEvents;
 import com.google.common.eventbus.EventBus;
 import com.google.common.eventbus.Subscribe;
 
@@ -38,16 +39,18 @@ public class EventBusUser {
         public void mOne1(Long l) {
             events.add("mOne1:" + l);
         }
+        //@WeakAllowConcurrentEvents
         public void xxx(String s) {
             events.add("xxx:" + s);
         }
+        @WeakAllowConcurrentEvents
         @WeakSubscribe
-        public void mOne2(String l) {
+        void mOne2(String l) {
             events.add("mOne2:" + l);
         }
     }
 
-    public static class BrTwo {
+    public static class SomeStrongBusReceiver {
         @WeakAllowConcurrentEvents
         @WeakSubscribe
         public void mTwo1(Integer l) {
@@ -59,11 +62,30 @@ public class EventBusUser {
 
     public static class BrNormal {
         @Subscribe
-        public void m(Integer i) {}
+        private void m1(Integer i) {
+            events.add("BrNormal:" + i);
+        }
+
+        @AllowConcurrentEvents
+        private void m2(Long l) {
+            events.add("BrNormal:" + l);
+        }
+    }
+    @SuppressWarnings({"unused", "UseOfSystemOutOrSystemErr", "UnnecessaryBoxing"})
+    private static void normal() {
+        EventBus eb = new EventBus();
+        eb.register(new BrNormal());
+        eb.post(Integer.valueOf(3));
+        eb.post(Long.valueOf(7));
+        System.out.println(events.toString());
+        if (events.size() != 1)
+            throw new IllegalStateException("normal post not 1 event");
+        events.clear();
     }
 
     @SuppressWarnings({"UseOfSystemOutOrSystemErr", "UnusedAssignment"})
     public static void main(String[] args) {
+        normal();
         EventBus eventBus = new EventBus();
         BrOne br = new BrOne();
 
@@ -72,9 +94,10 @@ public class EventBusUser {
         eventBus.post(Long.valueOf(3));
         eventBus.post("foo");
         System.out.println(events.toString());
-        if (!events.get(0).equals("mOne1:3")
+        if (events.size() != 2
+                || !events.get(0).equals("mOne1:3")
                 || !events.get(1).equals("mOne2:foo"))
-            throw new IllegalStateException("wrong post");
+            throw new IllegalStateException("bad post");
 
         events.clear();
 

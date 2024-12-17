@@ -2,7 +2,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.raelity.play</groupId>
-    <artifactId>event-bus-test</artifactId>
+    <artifactId>weak-event-bus-test</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
     <properties>
@@ -15,7 +15,7 @@
     <dependencies>
         <dependency>
             <groupId>com.raelity.lib</groupId>
-            <artifactId>event-bus</artifactId>
+            <artifactId>weak-event-bus-receiver</artifactId>
             <version>${event-bus.version}</version>
         </dependency>
     </dependencies>
@@ -37,14 +37,9 @@
                             com.raelity.lib.eventbus.WeakEventBusProcessor
                         </annotationProcessor>
                     </annotationProcessors>
-                    <!--
-                        <source>17</source>
-                        <target>17</target>
-                    -->
                 </configuration>
             </plugin>
 
         </plugins>
     </build>
-    <name>event-bus-test</name>
 </project>

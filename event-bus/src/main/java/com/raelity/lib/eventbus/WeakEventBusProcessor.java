@@ -19,7 +19,7 @@ package com.raelity.lib.eventbus;
 
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,12 +32,11 @@ import javax.annotation.processing.RoundEnvironment;
 import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
-import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
-import javax.lang.model.element.ElementKind;
+import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.ExecutableType;
-import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
@@ -61,12 +60,11 @@ private static void P(@SuppressWarnings("unused") String fmt,
     String s = args.length == 0 ? fmt : String.format(fmt, args);
     System.out.printf(s);
 }
+private enum Annotation { SUBSCRIBE, CONCURRENT }
+private static final String WEAK_SUBSCRIBE = "com.raelity.lib.eventbus.WeakSubscribe";
+private static final String WEAK_CONCURRENT = "com.raelity.lib.eventbus.WeakAllowConcurrentEvents";
 
-private record MethodInfo(Element method, boolean isSubscribe, boolean isConcurrent){}
-// Key is classElement.
-private Map<Element, List<MethodInfo>> clazzes = new HashMap<>();
-
-boolean has_error;
+private Map<TypeElement, Map<ExecutableElement, Set<Annotation>>> classesAndMethods = new HashMap<>();
 
 @Override
 public boolean process(Set<? extends TypeElement> annotations,
@@ -76,56 +74,110 @@ public boolean process(Set<? extends TypeElement> annotations,
     if (annotations.isEmpty())
         return false;
 
-    // Scan the annotations and build per class method information.
+    // Scan the annotations and collect per class methods
     for (TypeElement annotation : annotations) {
         Set<? extends Element> annotatedElements
                 = roundEnv.getElementsAnnotatedWith(annotation);
+        String annotName = annotation.toString();
+        Annotation annot = annotName.equals(WEAK_SUBSCRIBE) ? Annotation.SUBSCRIBE
+                           :annotName.equals(WEAK_CONCURRENT) ? Annotation.CONCURRENT 
+                            : null; // null impossible (at least for now)
 
-        //P("\nPROCESSOR element %s: %s\n", annotation, annotatedElements);
-        for(Element element : annotatedElements) {
-            // Process the element's class
-            checkClassFor(element);
+        //P("\nPROCESSOR element %s, %s: %s\n", annotation, annot, annotatedElements);
+        for (Element element : annotatedElements) {
+            // The annotated methods for this annotatations class.
+            Map<ExecutableElement, Set<Annotation>> methods
+                    = classesAndMethods.computeIfAbsent(
+                            (TypeElement)element.getEnclosingElement(),
+                            k -> new HashMap<>());
+            // Add current annotation to the method
+            methods.computeIfAbsent((ExecutableElement)element,
+                                    k -> EnumSet.noneOf(Annotation.class))
+                    .add(annot);
+            //P("Method %s: %s\n", element, methods.get((ExecutableElement)element));
         }
     }
-    if (has_error)
-        return true;
-    
-    // Now build the weak event bus receiver files.
+
+    // Check method's signature and annotation usage.
+    for(Entry<TypeElement, Map<ExecutableElement, Set<Annotation>>> classMeths
+            : classesAndMethods.entrySet()) {
+        TypeElement classElement = classMeths.getKey();
+        for(Entry<ExecutableElement, Set<Annotation>> methAnnos
+                : classMeths.getValue().entrySet()) {
+            ExecutableElement methodElement = methAnnos.getKey();
+            Set<Annotation> annos= methAnnos.getValue();
+
+            // Check method parameter.
+            ExecutableType methodType = (ExecutableType)methodElement.asType();
+            List<? extends TypeMirror> pt = methodType.getParameterTypes();
+            if (pt.size() != 1)
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                        String.format("%s::%s @Subscribe method exactly one parameter",
+                        classElement.toString(), methodElement.getSimpleName()));
+            else if (pt.get(0).getKind().isPrimitive())
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                        String.format("%s::%s @Subscribe parameter is not an object",
+                        classElement.toString(), methodElement.getSimpleName()));
+            if(annos.contains(Annotation.CONCURRENT)
+                    && !annos.contains(Annotation.SUBSCRIBE))
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
+                        String.format("%s::%s @AllowConcurrentEvents without @Subscribe",
+                        classElement, methodElement.getSimpleName()));
+            if (annos.contains(Annotation.SUBSCRIBE)
+                    && methodElement.getModifiers().contains(Modifier.PRIVATE))
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                        String.format("%s::%s @WeakSubscriber has private access",
+                        classElement, methodElement.getSimpleName()));
+        }
+    }
+
+    // Now build the weak event bus receiver files (even if there were errors).
     //P("\nGenerating source files\n\n");
-    for(Entry<Element, List<MethodInfo>> entry : clazzes.entrySet()) {
+    for(Entry<TypeElement, Map<ExecutableElement, Set<Annotation>>> classMeths
+            : classesAndMethods.entrySet()) {
         try {
-            generateSourceFile(entry);
+            generateSourceFile(classMeths.getKey(), classMeths.getValue());
         } catch(IOException ex) {
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                    "Error generating builder: " + ex);
+                    "Error generating builder: " + ex.getMessage());
+            break;
         }
     }
     return true;
 }
 
-private void generateSourceFile(Entry<Element, List<MethodInfo>> entry)
-        throws IOException {
+private void generateSourceFile(TypeElement classElement,
+                                Map<ExecutableElement, Set<Annotation>> methAnnos)
+        throws IOException
+{
     String pkg = processingEnv.getElementUtils()
-            .getPackageOf(entry.getKey()).getQualifiedName().toString();
-    String strongClassName = entry.getKey().asType().toString();
+            .getPackageOf(classElement).getQualifiedName().toString();
+    String strongClassName = classElement.asType().toString();
     String weakClassName = nameWeakBR(strongClassName, pkg);
 
     JavaFileObject of = processingEnv.getFiler().createSourceFile(
             pkg + "."+ weakClassName);
     try (PrintWriter out = new PrintWriter(of.openWriter())) {
-        // First, the stuff that's common; declares the class and a few methods.
+        // First, the stuff that's common; declares the weak receiver and a few methods.
         out.write(classTemplate
                 .replace("{WeakBusReceiver}", weakClassName)
                 .replace("{StrongBusReceiver}", strongClassName)
                 .replace("{package}", pkg));
         // The trampoline methods to the strong/real event bus.
-        for(MethodInfo methodInfo : entry.getValue()) {
-            ExecutableType methodType = (ExecutableType)methodInfo.method().asType();
+        for(Entry<ExecutableElement, Set<Annotation>> entry : methAnnos.entrySet()) {
+            ExecutableElement method = entry.getKey();
+            Set<Annotation> annos= entry.getValue();
+            if (!annos.contains(Annotation.SUBSCRIBE))
+                continue;
+
+            ExecutableType methodType = (ExecutableType)method.asType();
             TypeMirror paramType = methodType.getParameterTypes().get(0);
             out.write(methodTemplate
-                    .replace("{method}", methodInfo.method().getSimpleName())
+                    .replace("{method}", method.getSimpleName())
                     .replace("{eventType}", paramType.toString())
-                    .replace("{allowConcurrent}", methodInfo.isConcurrent
+                    .replace("{subscribe}", annos.contains(Annotation.SUBSCRIBE)
+                                              ? "\n    @Subscribe" : "")
+                    .replace("{allowConcurrent}", annos.contains(Annotation.CONCURRENT)
                                               ? "\n    @AllowConcurrentEvents" : ""));
         }
         out.write("}\n");
@@ -139,87 +191,6 @@ public static String nameWeakBR(String strongEBName, String pkg)
     String n = "WeakEB_" + strongEBName.substring(pkg.length()+1).replaceAll("[\\.\\$]", "_");
     // P("WeakEventBus::register: %s::%s\n", pkg, n);
     return n;
-}
-
-private static final String GUAVA_EB = "@com.google.common.eventbus";
-private static final String WEAK_SUBSCRIBE = "@com.raelity.lib.eventbus.WeakSubscribe";
-private static final String WEAK_CONCURRENT = "@com.raelity.lib.eventbus.WeakAllowConcurrentEvents";
-
-private Element checkClassFor(Element anyMethodElement) {
-    TypeElement classElement = (TypeElement)anyMethodElement.getEnclosingElement();
-    List<MethodInfo> l = clazzes.computeIfAbsent(classElement, k -> new ArrayList<>());
-    if (!l.isEmpty())
-        return classElement; // Already processed this class
-
-    // String pkg = processingEnv.getElementUtils().getPackageOf(element)
-    //         .getQualifiedName().toString();
-    // P("\nenclKind %s, name %s::%s type %s\n    %s\n",
-    //   classType.getKind(), pkg, nameWeakBR(classType.toString(), pkg),
-    //   classType.getClass().getSimpleName(), classType);
-
-    // Examine the annotations of each method in this class.
-    for(Element el : classElement.getEnclosedElements()) {
-        //P("ELEM %s %s\n", el, el.getKind());
-        if (el.getKind() != ElementKind.METHOD)
-            continue;
-
-        // Determine the kinds of EventBus receiver annotions on the method.
-        boolean hasGuavaAnnotation = false;
-        boolean hasSubscribe = false;
-        boolean hasConcurrent = false;
-        List<? extends AnnotationMirror> annotationMirrors = el.getAnnotationMirrors();
-        for(AnnotationMirror am : annotationMirrors) {
-            String stringAnno = am.toString();
-            if (stringAnno.startsWith(GUAVA_EB))
-                hasGuavaAnnotation = true;
-            else if(stringAnno.equals(WEAK_SUBSCRIBE))
-                hasSubscribe = true;
-            else if(stringAnno.equals(WEAK_CONCURRENT))
-                hasConcurrent = true;
-        }
-        // P("ANNO sub %s, concur %s, guava %s %s\n",
-        //   hasSubscribe, hasConcurrent, hasGuavaAnnotation,
-        //   annotationMirrors.isEmpty() ? null : annotationMirrors);
-
-        // This class has WeakEventBus receiver annotions,
-        // also having guava EventBus receiver annotations is an error.
-        if (hasGuavaAnnotation) {
-            has_error = true;
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                    String.format("%s can not mix annotations for regualar EventBus with WeakEventBus",
-                    classElement));
-        }
-
-        if (hasSubscribe || hasConcurrent) {
-            if (hasSubscribe) {
-                l.add(new MethodInfo(el, hasSubscribe, hasConcurrent));
-
-                // Check method parameter.
-                ExecutableType methodType = (ExecutableType)el.asType();
-                List<? extends TypeMirror> pt = methodType.getParameterTypes();
-                if (pt.size() != 1) {
-                    has_error = true;
-                    processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                                                         String.format("%s::%s Subscriber takes exactly one parameter",
-                                      classElement.toString(), el.getSimpleName()));
-                } else if (pt.get(0).getKind() != TypeKind.DECLARED) {
-                    has_error = true;
-                    processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                                                         String.format("%s::%s Subscribe parameter is not an object",
-                                      classElement.toString(), el.getSimpleName()));
-                }
-            } else {
-                // Concurrent without subscribe is an error.
-                has_error = true;
-                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                        String.format("%s::%s concurrent without subscribe",
-                        classElement, el.getSimpleName()));
-                
-            }
-        }
-    }
-
-    return classElement;
 }
 
 String classTemplate = """
@@ -245,129 +216,10 @@ public class {WeakBusReceiver} {
 """;
 
 String methodTemplate = """
-
-    @Subscribe{allowConcurrent}
+    {subscribe}{allowConcurrent}
     public void {method}({eventType} ev)
     {
         doit((br) -> br.{method}(ev));
     }
 """;
 }
-
-/*
-
-This is from a previous version of checkClassFor
-
-            //boolean hasGuavaAnnotation = el.getAnnotationMirrors().stream()
-            //        .filter(a -> a.toString().startsWith(GUAVA_EB))
-            //        .findFirst()
-            //        .isPresent();
-
-
-
-This is the "first" implementation.
-Mostly careful about types...
-Replaced by examining all the methods in the class,
-checking for anomolies, recording which annotations.
-
-@Override
-public boolean process(Set<? extends TypeElement> annotations,
-                       RoundEnvironment roundEnv)
-{
-    P("PROCESSOR: %s\n", annotations);
-    if (annotations.isEmpty())
-        return false;
-
-    TypeElement allowConcurrentElem = annotations.stream()
-            .filter(a -> a.toString().contains("Concurrent")).findFirst()
-            .orElse(null);
-    // TypeMirror allowConcurrentType = annotations.stream()
-    //         .map(a -> a.asType())
-    //         .filter(a -> a.toString().contains("Concurrent")).findFirst()
-    //         .orElse(null);
-    // P("    CONCUR TYPE: %s", allowConcurrentType);
-
-    // Scan the annotations and build per class method information.
-    for (TypeElement annotation : annotations) {
-        Set<? extends Element> annotatedElements
-                = roundEnv.getElementsAnnotatedWith(annotation);
-        // Skip AllowConcurrentEvents, handled manually
-        if(annotation.equals(allowConcurrentElem))
-            continue;
-        //if(annotation.asType().equals(allowConcurrentType))
-        //    continue;
-
-// Map<Boolean, List<Element>> annotatedMethods = annotatedElements.stream().collect(
-//   Collectors.partitioningBy(element ->
-//     ((ExecutableType) element.asType()).getParameterTypes().size() == 1
-//     && element.getSimpleName().toString().startsWith("set")));
-// 
-// List<Element> setters = annotatedMethods.get(true);
-// List<Element> otherMethods = annotatedMethods.get(false);
-
-        P("\nPROCESSOR element %s: %s\n", annotation, annotatedElements);
-        for(Element element : annotatedElements) {
-            // Get the class that has this method.
-            //DeclaredType classType = (DeclaredType)element.getEnclosingElement().asType();
-            //if (!handledClasses.contains(classType)) {
-            //    createClassFor(classType);
-            //    handledClasses.add(classType);
-            //}
-
-            Element classElement = checkClassFor(element);
-
-            ExecutableType methodType = (ExecutableType)element.asType();
-            List<? extends TypeMirror> pt = methodType.getParameterTypes();
-            if (pt.size() != 1) {
-                has_error = true;
-                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                        String.format("%s::%s Subscriber takes exactly one parameter",
-                                      classElement.toString(), element.getSimpleName()));
-            } else if (pt.get(0).getKind() != TypeKind.DECLARED) {
-                has_error = true;
-                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                        String.format("%s::%s Subscribe parameter is not an object",
-                                      classElement.toString(), element.getSimpleName()));
-            }
-            P("el %s, elKind: %s, type %s\n",
-              element, element.getKind(), methodType);
-            P("    name %s::%s, argType: %s, kind %s\n",
-              classElement.toString(), element.getSimpleName(),
-              pt.get(0).toString(), pt.get(0).getKind());
-            P("    all annotations %s\n", element.getAnnotationMirrors());
-            boolean isConcurrent = element.getAnnotationMirrors().stream()
-                    .filter(a -> a.getAnnotationType()
-                            .equals(allowConcurrentElem.asType()))
-                    .findFirst()
-                    .isPresent();
-            P("    concurant %s\n", isConcurrent);
-            //AnnotationMirror am = element.getAnnotationMirrors().get(0);
-            //P( "    conc mirror %s, am %s\n", allowConcurrentElem.asType(), am);
-            //boolean isConcurrent = false;
-
-
-            //clazzes.get(classElement).add(new MethodInfo(element, isConcurrent));
-
-
-        }
-    }
-    if (has_error)
-        return true;
-    
-    // Now build the weak event bus files.
-    P("\nGenerating source files\n\n");
-    for(Entry<Element, List<MethodInfo>> entry : clazzes.entrySet()) {
-        try {
-            // String pkg = processingEnv.getElementUtils()
-            //         .getPackageOf(entry.getKey()).getQualifiedName().toString();
-            // //DeclaredType classType = (DeclaredType)classElement.asType();
-            // String className = entry.getKey().asType().toString();
-            generateSourceFile(entry);
-        } catch(IOException ex) {
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                    "Error generating builder: " + ex);
-        }
-    }
-    return true;
-}
-*/
