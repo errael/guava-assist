@@ -11,6 +11,7 @@
         <maven-jar-plugin.version>3.4.2</maven-jar-plugin.version>
 
         <version.google-guava>33.0.0-jre</version.google-guava>
+        <version.netbeans>RELEASE200</version.netbeans>
     <!--
     -->
     </properties>
@@ -75,6 +76,11 @@
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
             <version>${version.google-guava}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.netbeans.api</groupId>
+            <artifactId>org-openide-util-lookup</artifactId>
+            <version>${version.netbeans}</version>
         </dependency>
     </dependencies>
 

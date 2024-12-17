@@ -27,6 +27,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 
 import javax.annotation.processing.AbstractProcessor;
+import javax.annotation.processing.Processor;
 import javax.annotation.processing.RoundEnvironment;
 import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedSourceVersion;
@@ -35,28 +36,28 @@ import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
-import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.ExecutableType;
+import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
 
-//import com.google.auto.service.AutoService;
+import org.openide.util.lookup.ServiceProvider;
 
 /**
  * Process annotations for creating a weak EventBus subscriber.
  */
 @SupportedAnnotationTypes({"com.raelity.lib.eventbus.WeakSubscribe",
-    "com.raelity.lib.eventbus.WeakAllowConcurrentEvents"
-})
+    "com.raelity.lib.eventbus.WeakAllowConcurrentEvents"})
 @SupportedSourceVersion(SourceVersion.RELEASE_11)
 @SuppressWarnings("ObsoleteAnnotationSupportedSource")
-public class WeakEventBusProcessor extends AbstractProcessor // implements Processor
+@ServiceProvider(service=Processor.class)
+public class WeakEventBusProcessor extends AbstractProcessor
 {
 // For debug output
-@SuppressWarnings("UseOfSystemOutOrSystemErr")
-private static void P(String fmt, Object... args) {
-    @SuppressWarnings("unused")
+@SuppressWarnings({"UseOfSystemOutOrSystemErr", "unused"})
+private static void P(@SuppressWarnings("unused") String fmt,
+                      @SuppressWarnings("unused") Object... args) {
     String s = args.length == 0 ? fmt : String.format(fmt, args);
     System.out.printf(s);
 }
@@ -71,7 +72,7 @@ boolean has_error;
 public boolean process(Set<? extends TypeElement> annotations,
                        RoundEnvironment roundEnv)
 {
-    P("PROCESSOR: %s\n", annotations);
+    //P("PROCESSOR: %s\n", annotations);
     if (annotations.isEmpty())
         return false;
 
@@ -80,7 +81,7 @@ public boolean process(Set<? extends TypeElement> annotations,
         Set<? extends Element> annotatedElements
                 = roundEnv.getElementsAnnotatedWith(annotation);
 
-        P("\nPROCESSOR element %s: %s\n", annotation, annotatedElements);
+        //P("\nPROCESSOR element %s: %s\n", annotation, annotatedElements);
         for(Element element : annotatedElements) {
             // Process the element's class
             checkClassFor(element);
@@ -90,7 +91,7 @@ public boolean process(Set<? extends TypeElement> annotations,
         return true;
     
     // Now build the weak event bus receiver files.
-    P("\nGenerating source files\n\n");
+    //P("\nGenerating source files\n\n");
     for(Entry<Element, List<MethodInfo>> entry : clazzes.entrySet()) {
         try {
             generateSourceFile(entry);
@@ -106,7 +107,6 @@ private void generateSourceFile(Entry<Element, List<MethodInfo>> entry)
         throws IOException {
     String pkg = processingEnv.getElementUtils()
             .getPackageOf(entry.getKey()).getQualifiedName().toString();
-    //DeclaredType classType = (DeclaredType)classElement.asType();
     String strongClassName = entry.getKey().asType().toString();
     String weakClassName = nameWeakBR(strongClassName, pkg);
 
@@ -145,12 +145,11 @@ private static final String GUAVA_EB = "@com.google.common.eventbus";
 private static final String WEAK_SUBSCRIBE = "@com.raelity.lib.eventbus.WeakSubscribe";
 private static final String WEAK_CONCURRENT = "@com.raelity.lib.eventbus.WeakAllowConcurrentEvents";
 
-private Element checkClassFor(Element element) {
-    TypeElement classElement = (TypeElement)element.getEnclosingElement();
-    DeclaredType classType = (DeclaredType)classElement.asType();
+private Element checkClassFor(Element anyMethodElement) {
+    TypeElement classElement = (TypeElement)anyMethodElement.getEnclosingElement();
     List<MethodInfo> l = clazzes.computeIfAbsent(classElement, k -> new ArrayList<>());
     if (!l.isEmpty())
-        return classElement;
+        return classElement; // Already processed this class
 
     // String pkg = processingEnv.getElementUtils().getPackageOf(element)
     //         .getQualifiedName().toString();
@@ -160,7 +159,7 @@ private Element checkClassFor(Element element) {
 
     // Examine the annotations of each method in this class.
     for(Element el : classElement.getEnclosedElements()) {
-        P("ELEM %s %s\n", el, el.getKind());
+        //P("ELEM %s %s\n", el, el.getKind());
         if (el.getKind() != ElementKind.METHOD)
             continue;
 
@@ -168,17 +167,19 @@ private Element checkClassFor(Element element) {
         boolean hasGuavaAnnotation = false;
         boolean hasSubscribe = false;
         boolean hasConcurrent = false;
-        for(AnnotationMirror am : el.getAnnotationMirrors()) {
+        List<? extends AnnotationMirror> annotationMirrors = el.getAnnotationMirrors();
+        for(AnnotationMirror am : annotationMirrors) {
             String stringAnno = am.toString();
-            if (stringAnno.startsWith(GUAVA_EB)) {
+            if (stringAnno.startsWith(GUAVA_EB))
                 hasGuavaAnnotation = true;
-                break;
-            } else if(stringAnno.startsWith(WEAK_SUBSCRIBE))
+            else if(stringAnno.equals(WEAK_SUBSCRIBE))
                 hasSubscribe = true;
-            else if(stringAnno.startsWith(WEAK_CONCURRENT))
+            else if(stringAnno.equals(WEAK_CONCURRENT))
                 hasConcurrent = true;
-
         }
+        // P("ANNO sub %s, concur %s, guava %s %s\n",
+        //   hasSubscribe, hasConcurrent, hasGuavaAnnotation,
+        //   annotationMirrors.isEmpty() ? null : annotationMirrors);
 
         // This class has WeakEventBus receiver annotions,
         // also having guava EventBus receiver annotations is an error.
@@ -189,17 +190,30 @@ private Element checkClassFor(Element element) {
                     classElement));
         }
 
-        P("ANNO %s %s\n", hasGuavaAnnotation, el.getAnnotationMirrors().get(0));
-
         if (hasSubscribe || hasConcurrent) {
-            if (hasSubscribe)
+            if (hasSubscribe) {
                 l.add(new MethodInfo(el, hasSubscribe, hasConcurrent));
-            else {
+
+                // Check method parameter.
+                ExecutableType methodType = (ExecutableType)el.asType();
+                List<? extends TypeMirror> pt = methodType.getParameterTypes();
+                if (pt.size() != 1) {
+                    has_error = true;
+                    processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                                                         String.format("%s::%s Subscriber takes exactly one parameter",
+                                      classElement.toString(), el.getSimpleName()));
+                } else if (pt.get(0).getKind() != TypeKind.DECLARED) {
+                    has_error = true;
+                    processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                                                         String.format("%s::%s Subscribe parameter is not an object",
+                                      classElement.toString(), el.getSimpleName()));
+                }
+            } else {
                 // Concurrent without subscribe is an error.
                 has_error = true;
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                         String.format("%s::%s concurrent without subscribe",
-                        classElement, element.getSimpleName()));
+                        classElement, el.getSimpleName()));
                 
             }
         }
@@ -209,10 +223,7 @@ private Element checkClassFor(Element element) {
 }
 
 String classTemplate = """
-//private static final Cleaner cleaner = Cleaner.create();
 package {package};
-//import com.raelity.lib.eventbus.WeakEventBus;
-//import com.google.common.eventbus.EventBus;
 import com.google.common.eventbus.Subscribe;
 import com.google.common.eventbus.AllowConcurrentEvents;
 import java.lang.ref.WeakReference;
@@ -223,7 +234,6 @@ public class {WeakBusReceiver} {
     public {WeakBusReceiver}({StrongBusReceiver} realBR)
     {
         this.ref = new WeakReference<>(realBR);
-        //WeakEventBus.cleaner.register(realBR, () -> evBus.unregister(this));
     }
 
     private void doit(Consumer<{StrongBusReceiver}> doit)
@@ -233,7 +243,7 @@ public class {WeakBusReceiver} {
             doit.accept(br);
     }
 """;
-// "{method}" --> "methodName(RowSetModificationEvent ev)"
+
 String methodTemplate = """
 
     @Subscribe{allowConcurrent}
@@ -242,6 +252,7 @@ String methodTemplate = """
         doit((br) -> br.{method}(ev));
     }
 """;
+}
 
 /*
 
@@ -360,5 +371,3 @@ public boolean process(Set<? extends TypeElement> annotations,
     return true;
 }
 */
-
-}

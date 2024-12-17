@@ -38,14 +38,17 @@ public class EventBusUser {
         public void mOne1(Long l) {
             events.add("mOne1:" + l);
         }
+        public void xxx(String s) {
+            events.add("xxx:" + s);
+        }
         @WeakSubscribe
-        @WeakAllowConcurrentEvents
         public void mOne2(String l) {
             events.add("mOne2:" + l);
         }
     }
 
     public static class BrTwo {
+        @WeakAllowConcurrentEvents
         @WeakSubscribe
         public void mTwo1(Integer l) {
         }
@@ -59,7 +62,7 @@ public class EventBusUser {
         public void m(Integer i) {}
     }
 
-    @SuppressWarnings("UseOfSystemOutOrSystemErr")
+    @SuppressWarnings({"UseOfSystemOutOrSystemErr", "UnusedAssignment"})
     public static void main(String[] args) {
         EventBus eventBus = new EventBus();
         BrOne br = new BrOne();
@@ -82,6 +85,28 @@ public class EventBusUser {
         if (!events.isEmpty())
             throw new IllegalStateException("not empty");
         
+        // Now do garbage collect unregister.
+
+        WeakEventBus.register(br, eventBus);
+        events.clear();
+
+        eventBus.post(Long.valueOf(3));
+        eventBus.post("foo");
+        System.out.println(events.toString());
+        if (!events.get(0).equals("mOne1:3")
+                || !events.get(1).equals("mOne2:foo"))
+            throw new IllegalStateException("wrong post");
+
+        events.clear();
+
+        br = null;
+        // Note that events are delivered without running the garbage colletor.
+        System.gc();
+
+        eventBus.post(Long.valueOf(3));
+        eventBus.post("foo");
+        if (!events.isEmpty())
+            throw new IllegalStateException("not empty");
         
         System.out.println("OK");
     }
