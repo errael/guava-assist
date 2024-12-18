@@ -23,12 +23,16 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Error if mixed with EventBus's {@link com.google.common.eventbus.Subscribe}
- * or {@link com.google.common.eventbus.AllowConcurrentEvents}.
+ * Marks a weak event subscriber method as being thread-safe
+ * and in a weak event bus receiver.
+ * This annotation indicates that EventBus may invoke the event
+ * subscriber simultaneously from multiple threads.
+ * <p>
+ * This does not mark the method, and so should be used in combination
+ * with {@link WeakSubscribe}.
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.SOURCE)
-public @interface WeakSubscribe
+public @interface WeakAllowConcurrentEvents
 {
-    
 }

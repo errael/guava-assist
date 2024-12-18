@@ -44,7 +44,7 @@ import javax.tools.JavaFileObject;
 import org.openide.util.lookup.ServiceProvider;
 
 /**
- * Process annotations for creating a weak EventBus subscriber.
+ * Process annotations for creating a weak event bus receiver.
  */
 @SupportedAnnotationTypes({"com.raelity.lib.eventbus.WeakSubscribe",
     "com.raelity.lib.eventbus.WeakAllowConcurrentEvents"})
@@ -64,6 +64,7 @@ private enum Annotation { SUBSCRIBE, CONCURRENT }
 private static final String WEAK_SUBSCRIBE = "com.raelity.lib.eventbus.WeakSubscribe";
 private static final String WEAK_CONCURRENT = "com.raelity.lib.eventbus.WeakAllowConcurrentEvents";
 
+// Map<class, Map<method,annotations>>
 private Map<TypeElement, Map<ExecutableElement, Set<Annotation>>> classesAndMethods = new HashMap<>();
 
 @Override
@@ -74,27 +75,26 @@ public boolean process(Set<? extends TypeElement> annotations,
     if (annotations.isEmpty())
         return false;
 
-    // Scan the annotations and collect per class methods
+    // Scan the annotations and collect map of class to its methods: classesAndMethods.
     for (TypeElement annotation : annotations) {
-        Set<? extends Element> annotatedElements
-                = roundEnv.getElementsAnnotatedWith(annotation);
         String annotName = annotation.toString();
         Annotation annot = annotName.equals(WEAK_SUBSCRIBE) ? Annotation.SUBSCRIBE
                            :annotName.equals(WEAK_CONCURRENT) ? Annotation.CONCURRENT 
                             : null; // null impossible (at least for now)
-
+        Set<? extends Element> annotatedElements
+                = roundEnv.getElementsAnnotatedWith(annotation);
         //P("\nPROCESSOR element %s, %s: %s\n", annotation, annot, annotatedElements);
-        for (Element element : annotatedElements) {
-            // The annotated methods for this annotatations class.
+        for (Element methodElement : annotatedElements) {
+            // "methods" is the annotated methods for this element's class.
             Map<ExecutableElement, Set<Annotation>> methods
                     = classesAndMethods.computeIfAbsent(
-                            (TypeElement)element.getEnclosingElement(),
+                            (TypeElement)methodElement.getEnclosingElement(),
                             k -> new HashMap<>());
             // Add current annotation to the method
-            methods.computeIfAbsent((ExecutableElement)element,
+            methods.computeIfAbsent((ExecutableElement)methodElement,
                                     k -> EnumSet.noneOf(Annotation.class))
                     .add(annot);
-            //P("Method %s: %s\n", element, methods.get((ExecutableElement)element));
+            //P("Method %s: %s\n", methodElement, methods.get((ExecutableElement)methodElement));
         }
     }
 
@@ -184,6 +184,13 @@ private void generateSourceFile(TypeElement classElement,
     }
 }
 
+/**
+ * Given a strong event bus receiver class name and its package, determine
+ * the simple class name of the corresponding weak event bus receiver.
+ * @param strongEBName strong receiver
+ * @param pkg strong receiver package
+ * @return weak receiver simple class name
+ */
 public static String nameWeakBR(String strongEBName, String pkg)
 {
     if (!strongEBName.startsWith(pkg))

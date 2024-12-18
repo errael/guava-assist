@@ -23,14 +23,20 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks a weak event subscriber method as being thread-safe.
- * Only use in conjuction with {@link WeakSubscribe}.
- * Error if mixed with EventBus's {@link com.google.common.eventbus.Subscribe}
- * or {@link com.google.common.eventbus.AllowConcurrentEvents}.
+ * Mark a method as an event subscriber in a weak event bus receiver.
+ * <p>
+ * The type of event will be indicated by the method's first (and only) parameter,
+ * which cannot be primitive. If this annotation is applied to methods with zero
+ * parameters, or more than one parameter, the object containing the method will
+ * not be able to register for event delivery from the
+ * {@link com.google.common.eventbus.EventBus}.
+ * <p>
+ * Unless also annotated with {@link WeakAllowConcurrentEvents},
+ * event subscriber methods
+ * will be invoked serially by each event bus that they are registered with.
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.SOURCE)
-public @interface WeakAllowConcurrentEvents
+public @interface WeakSubscribe
 {
-    
 }

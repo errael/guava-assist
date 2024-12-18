@@ -26,14 +26,19 @@ import com.google.common.collect.MapMaker;
 import com.google.common.eventbus.EventBus;
 
 /**
- * For hooking up and registering a weak event bus.
- * The weak event bus is generated during compilation by
- * annotations on the strong event bus; it is in the same
- * package as the strong event bus.
+ * Static methods for hooking up and registering a weak event bus receiver.
+ * <p>
+ * The weak event bus receiver is generated during compilation by
+ * annotations on the strong event bus receiver; the weak receiver
+ * holds a {@linkplain java.lang.ref.WeakReference} to the strong receiver.
+ * The generated class file
+ * is in the same package as the strong event bus.
  * <p>
  * This class has a {@linkplain java.lang.ref.Cleaner} which,
  * when the strong event bus receiver becomes unreachable,
  * unregister's this weak event bus receiver from the EventBus.
+ * 
+ * See {@link WeakSubscribe} {@link WeakAllowConcurrentEvents}
  */
 public class WeakEventBus
 {
@@ -43,7 +48,7 @@ private static final Cleaner cleaner = Cleaner.create();
 
 /**
  * Construct an EventBus receiver that only has a weak reference to
- * the argument. Register it to the EventBus.
+ * "stringBR". Register it to the specified EventBus.
  * @param strongBR the event bus receiver to weakly reference
  * @param eventBus the event bus
  */
@@ -82,6 +87,12 @@ private static Map<Object, Object> registered = new MapMaker()
         .weakValues()
         .makeMap();
 
+/**
+ * Unregisters all subscriber methods on a registered object
+ * from the specified EventBus.
+ * @param strongBR the object whose weak proxy should be unregistered
+ * @param eventBus the eventBus which from which to unregister
+ */
 public static void unregister(Object strongBR, EventBus eventBus)
 {
     Object weakBR = registered.remove(strongBR);

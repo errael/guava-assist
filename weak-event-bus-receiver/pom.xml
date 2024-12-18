@@ -5,6 +5,7 @@
     <artifactId>weak-event-bus-receiver</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
+    <name>weak EventBus receiver</name>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
@@ -20,7 +21,7 @@
         Guava event bus @WeakSubscribe support.
     </description>
 
-    <url>https://github.com/errael/guava-assist/tree/main/event-bus</url>
+    <url>https://github.com/errael/guava-assist/tree/main/weak-event-bus-receiver</url>
 
     <scm>
         <url>https://github.com/errael/guava-assist</url>
@@ -104,7 +105,7 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-source-plugin</artifactId>
-                        <version>3.2.0</version>
+                        <version>3.3.1</version>
                         <executions>
                             <execution>
                                 <id>attach-sources</id>
@@ -117,7 +118,7 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-javadoc-plugin</artifactId>
-                        <version>3.1.1</version>
+                        <version>3.11.2</version>
                         <executions>
                             <execution>
                                 <id>attach-javadocs</id>
@@ -130,7 +131,7 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>
-                        <version>1.6</version>
+                        <version>3.2.7</version>
                         <executions>
                             <execution>
                                 <id>sign-artifacts</id>
@@ -144,7 +145,7 @@
                     <plugin>
                         <groupId>org.sonatype.plugins</groupId>
                         <artifactId>nexus-staging-maven-plugin</artifactId>
-                        <version>1.6.13</version>
+                        <version>1.7.0</version>
                         <extensions>true</extensions>
                         <configuration>
                             <serverId>ossrh</serverId>
