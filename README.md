@@ -19,7 +19,8 @@ The artifact requires `jdk-11` or later.
 Examine `weak-event-bus-test`'s `EventBusUser.java`, and run it, for a complete example.
 
 ```java
-public static class SomeStrongBusReceiver {
+// Must be PACKAGE so that the proxy can access it.
+static class SomeStrongBusReceiver {
     @WeakSubscribe
     public void catch1(SomeEvent ev) {
         // ...
@@ -31,8 +32,8 @@ public static class SomeStrongBusReceiver {
     }
 }
 
-eb = new SomeStrongBusReceiver; // If you might want to manually unregister.
-WeakEventBus.register(eb, myEventBus);
+ebr = new SomeStrongBusReceiver; // Must have a STRONG REFERENCE.
+WeakEventBus.register(ebr, myEventBus);
 ```
 
 In `pom.xml`
